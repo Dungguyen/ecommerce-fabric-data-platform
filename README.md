@@ -1,12 +1,13 @@
 # E-commerce Analytics Platform with Microsoft Fabric
 
-## Overview
+An end-to-end data engineering and analytics platform built with Microsoft Fabric.
 
-This project implements an end-to-end data engineering and analytics pipeline using Microsoft Fabric.
+The project ingests e-commerce transactional data from a local PostgreSQL database,
+processes it through a Bronze-Silver-Gold Lakehouse architecture, builds a dimensional
+star schema, serves analytics through Direct Lake on OneLake, and visualizes business
+metrics in Power BI.
 
-E-commerce transactional data is ingested from a local PostgreSQL database through an on-premises data gateway and Dataflow Gen2, processed through Bronze, Silver, and Gold layers in a Fabric Lakehouse, modeled as a dimensional star schema, and served to Power BI through Direct Lake on OneLake.
-
-The complete workflow is orchestrated using a Microsoft Fabric Data Pipeline.
+The complete workflow is orchestrated with Microsoft Fabric Data Pipeline.
 
 ---
 
@@ -22,14 +23,13 @@ On-premises Data Gateway
 Dataflow Gen2
         |
         v
-Microsoft Fabric Lakehouse
+Fabric Lakehouse / OneLake
         |
         v
 Bronze
 bronze_ecommerce_sales
         |
         v
-Fabric Notebook
 nb_bronze_to_silver
         |
         v
@@ -37,7 +37,6 @@ Silver
 silver_ecommerce_sales
         |
         v
-Fabric Notebook
 nb_silver_to_gold
         |
         v
@@ -51,138 +50,161 @@ Semantic Model
         |
         v
 Power BI
+```
 
-The workflow is orchestrated with a Microsoft Fabric Data Pipeline.
+The ingestion, transformation, and semantic-model refresh steps are orchestrated
+through a Fabric Data Pipeline.
 
-Technology Stack
-Layer	Technology
-Source	PostgreSQL
-Local-to-cloud connectivity	On-premises Data Gateway
-Ingestion	Dataflow Gen2
-Storage	Microsoft Fabric Lakehouse / OneLake
-Processing	Apache Spark / Fabric Notebooks
-Table format	Delta Lake
-Data architecture	Bronze / Silver / Gold
-Dimensional modeling	Star Schema
-Semantic layer	Direct Lake on OneLake
-Visualization	Power BI
-Orchestration	Microsoft Fabric Data Pipeline
-Dataset
+Detailed architecture documentation:
 
-The source dataset contains:
+[Architecture Documentation](docs/architecture.md)
 
-20,000 e-commerce orders
-Data from 2025-01-01 to 2025-12-31
-16 source attributes
+---
 
-The dataset grain is:
+## Technology Stack
 
-One row represents one order.
+| Layer | Technology |
+|---|---|
+| Source | PostgreSQL |
+| Local-to-cloud connectivity | On-premises Data Gateway |
+| Ingestion | Dataflow Gen2 |
+| Storage | Microsoft Fabric Lakehouse / OneLake |
+| Processing | Apache Spark / Fabric Notebooks |
+| Table format | Delta Lake |
+| Data architecture | Bronze / Silver / Gold |
+| Dimensional modeling | Star Schema |
+| Semantic layer | Direct Lake on OneLake |
+| Visualization | Power BI |
+| Orchestration | Microsoft Fabric Data Pipeline |
 
-Core attributes include:
+---
 
-order_id
-order_date
-customer_id
-product_id
-product_name
-category
-region
-sales_channel
-payment_method
-quantity
-unit_price
-discount_pct
-order_status
-gross_sales
-discount_amount
-net_sales
-Medallion Architecture
-Bronze
+## Dataset
 
-Raw source data is ingested from PostgreSQL into:
+The source contains:
 
+| Metric | Value |
+|---|---:|
+| Orders | 20,000 |
+| Source attributes | 16 |
+| Minimum order date | 2025-01-01 |
+| Maximum order date | 2025-12-31 |
+
+Dataset grain:
+
+> One row represents one order.
+
+---
+
+## Medallion Architecture
+
+### Bronze
+
+Source data is ingested from PostgreSQL into:
+
+```text
 dbo.bronze_ecommerce_sales
+```
 
-Validation result:
+Validation:
 
-Rows:            20,000
-Distinct orders: 20,000
-Silver
+```text
+Rows             20,000
+Distinct orders  20,000
+```
 
-The Bronze layer is transformed through:
+The Bronze layer remains close to the source for traceability.
 
+### Silver
+
+Transformation:
+
+```text
 nb_bronze_to_silver
+```
 
-The resulting table is:
+Output:
 
+```text
 dbo.silver_ecommerce_sales
+```
 
-Silver processing includes:
+Processing includes:
 
-string normalization
-explicit data type enforcement
-business-rule validation
-numeric validation
-monetary validation
-derived date attributes
-completed-order indicator
+- string normalization
+- explicit data-type enforcement
+- required-field validation
+- numeric and monetary validation
+- business-rule validation
+- date-derived attributes
+- completed-order indicator
 
-Validation result:
+Validation:
 
-Rows:            20,000
-Distinct orders: 20,000
-Gold
+```text
+Rows             20,000
+Distinct orders  20,000
+```
 
-The Gold layer uses a dimensional star schema.
+### Gold
 
-Tables:
+Gold contains one fact table and six dimensions:
 
+```text
 fact_sales
+
 dim_date
 dim_product
 dim_customer
 dim_region
 dim_channel
 dim_payment
+```
 
-Dimension sizes:
+Dimension counts:
 
-dim_product       30
-dim_customer    7,324
-dim_region          3
-dim_channel         3
-dim_payment         4
-dim_date          365
+| Table | Rows |
+|---|---:|
+| dim_product | 30 |
+| dim_customer | 7,324 |
+| dim_region | 3 |
+| dim_channel | 3 |
+| dim_payment | 4 |
+| dim_date | 365 |
 
 Fact validation:
 
-fact_sales rows        20,000
-distinct orders        20,000
+```text
+fact_sales rows       20,000
+distinct orders       20,000
 
-missing date keys           0
-missing customer keys       0
-missing product keys        0
-missing region keys         0
-missing channel keys        0
-missing payment keys        0
-Data Quality
+missing date_key           0
+missing customer_key       0
+missing product_key        0
+missing region_key         0
+missing channel_key        0
+missing payment_key        0
+```
 
-Data profiling was performed before dimensional modeling.
+---
 
-The following checks returned zero invalid records:
+## Data Quality Engineering
 
-missing order IDs
-missing order dates
-missing customer IDs
-missing product IDs
-invalid quantities
-invalid unit prices
-invalid discount percentages
-negative sales values
+Profiling was performed before dimensional modeling.
 
-Financial formulas were also validated:
+The following validations returned zero invalid records:
 
+- missing required identifiers
+- invalid quantities
+- invalid prices
+- invalid discount percentages
+- negative sales values
+- financial formula mismatches
+- missing Gold dimension keys
+
+Financial rules:
+
+```text
 gross_sales
 = quantity * unit_price
 
@@ -191,100 +213,187 @@ discount_amount
 
 net_sales
 = gross_sales - discount_amount
+```
 
-All formula mismatch checks returned zero.
+Full documentation:
 
-Dimensional Modeling Decisions
+[Data Quality Documentation](docs/data-quality.md)
 
-Profiling revealed that the source product_id was not a stable identifier for a single product.
+Reusable validation SQL:
 
-A single product ID could be associated with multiple product names and categories.
+[Validation Queries](sql/validation_queries.sql)
 
-However, the following relationship was stable:
+---
 
+## Profiling-Driven Modeling Decisions
+
+Data profiling showed that the initial source assumptions could not safely be
+used for dimensional modeling.
+
+### Product
+
+The source contained:
+
+```text
+899 distinct product IDs
+30 distinct product names
+6 categories
+14,134 product_id/product_name/category combinations
+```
+
+A single `product_id` could map to multiple product names and categories.
+
+However:
+
+```text
 product_name -> category
+```
 
-The product dimension was therefore modeled using the stable product-name/category relationship instead of blindly treating the source product ID as a dimensional business key.
+was stable in the observed dataset.
 
-Customer profiling also showed that a customer could appear in multiple regions.
+The Gold product dimension therefore uses the stable product-name/category
+relationship instead of blindly treating `product_id` as the business key.
 
-Region was therefore modeled as a separate dimension instead of as a fixed customer attribute.
+### Customer
 
-Semantic Model
+One `customer_id` could appear in multiple regions.
 
-The Gold tables are exposed through a semantic model using:
+Region was therefore modeled separately:
 
-Direct Lake on OneLake
+```text
+dim_customer
+dim_region
+```
 
-Relationships follow the star-schema pattern:
+instead of treating region as a permanent customer attribute.
 
+Detailed model documentation:
+
+[Dimensional Model](docs/dimensional-model.md)
+
+---
+
+## Gold Star Schema
+
+![Semantic Model](docs/screenshots/02_semantic_model_star_schema.png)
+
+Relationships follow:
+
+```text
 Dimension 1 ---- * fact_sales
+```
 
-with single-direction filtering from dimensions to the fact table.
+with single-direction filtering from dimensions toward the fact table.
+
+---
+
+## Semantic Model
+
+The Gold layer is exposed through:
+
+```text
+sm_ecommerce_sales
+```
+
+using:
+
+```text
+Direct Lake on OneLake
+```
 
 Business measures include:
 
-Completed Revenue
-Total Orders
-Completed Orders
-Cancelled Orders
-Returned Orders
-Average Order Value
-Completed Quantity
-Return Rate
-Cancellation Rate
-Power BI Report
+- Completed Revenue
+- Total Orders
+- Completed Orders
+- Cancelled Orders
+- Returned Orders
+- Average Order Value
+- Completed Quantity
+- Return Rate
+- Cancellation Rate
 
-The report contains three pages:
+Completed Revenue uses completed orders rather than treating cancelled or
+returned orders as realized revenue.
 
-Executive Overview
+---
 
-High-level business KPIs and trends.
+## Power BI Report
 
-Sales Analysis
+### Executive Overview
 
-Analysis by:
+![Executive Overview](docs/screenshots/03_executive_overview.png)
 
-month
-category
-region
-sales channel
-payment method
-Product Analysis
+Provides high-level revenue and operational KPIs.
 
-Analysis includes:
+### Sales Analysis
 
-top products by revenue
-revenue by category
-product quantity
-average order value
-product performance matrix
-Pipeline Orchestration
+![Sales Analysis](docs/screenshots/04_sales_analysis.png)
 
-Microsoft Fabric Data Pipeline orchestrates the complete workflow:
+Interactive analysis by:
 
+- month
+- category
+- region
+- sales channel
+- payment method
+
+### Product Analysis
+
+![Product Analysis](docs/screenshots/05_product_analysis.png)
+
+Includes:
+
+- Top products by Completed Revenue
+- Revenue by Category
+- Completed Quantity by Product
+- Average Order Value by Product
+- Product Performance Matrix
+
+---
+
+## Pipeline Orchestration
+
+The full workflow is orchestrated with:
+
+```text
+pl_ecommerce_end_to_end
+```
+
+Execution order:
+
+```text
 01_ingest_postgresql_to_bronze
-             |
-             v
+                |
+                v
 02_bronze_to_silver
-             |
-             v
+                |
+                v
 03_silver_to_gold
-             |
-             v
+                |
+                v
 04_refresh_semantic_model
+```
 
-The complete end-to-end pipeline has successfully executed.
+![Fabric Pipeline](docs/screenshots/01_pipeline_success.png)
 
-Final validation:
+End-to-end validation after a successful pipeline run:
 
-Bronze: 20,000 rows
-Silver: 20,000 rows
-Gold:   20,000 rows
-Repository Structure
+```text
+Bronze   20,000
+Silver   20,000
+Gold     20,000
+```
+
+---
+
+## Repository Structure
+
+```text
 ecommerce-fabric-data-platform/
 |
 ├── README.md
+├── CHANGELOG.md
 ├── docs/
 │   ├── architecture.md
 │   ├── data-quality.md
@@ -297,130 +406,98 @@ ecommerce-fabric-data-platform/
 │
 └── sql/
     └── validation_queries.sql
-Project Outcome
-
-This project demonstrates practical experience with:
-
-PostgreSQL ingestion
-hybrid local/cloud connectivity
-Microsoft Fabric
-Dataflow Gen2
-Medallion Architecture
-Delta Lake
-Apache Spark
-data quality validation
-dimensional modeling
-Direct Lake
-Power BI
-workflow orchestration
-
-## Project Evidence
-
-### End-to-End Fabric Pipeline
-
-The complete workflow is orchestrated through Microsoft Fabric Data Pipeline.
-
-```text
-Dataflow Gen2
-    ↓
-Bronze
-    ↓
-Bronze-to-Silver Notebook
-    ↓
-Silver
-    ↓
-Silver-to-Gold Notebook
-    ↓
-Gold Star Schema
-    ↓
-Semantic Model Refresh
 ```
 
-The end-to-end pipeline completed successfully.
+---
 
-![Fabric Pipeline](docs/screenshots/01_pipeline_success.png)
+## Transformation Source
+
+Bronze to Silver:
+
+[nb_bronze_to_silver.sql](notebooks/nb_bronze_to_silver.sql)
+
+Silver to Gold:
+
+[nb_silver_to_gold.sql](notebooks/nb_silver_to_gold.sql)
 
 ---
 
-### Gold Semantic Model
+## Engineering Highlights
 
-The analytical model follows a star-schema design with `fact_sales`
-at the center and six dimensions.
+This project demonstrates:
 
-![Semantic Model](docs/screenshots/02_semantic_model_star_schema.png)
+- PostgreSQL-to-Fabric ingestion
+- hybrid local/cloud connectivity
+- Medallion Architecture
+- Delta Lake
+- Spark SQL transformations
+- data-quality profiling
+- business-key validation
+- star-schema design
+- surrogate-key modeling
+- Direct Lake semantic modeling
+- Power BI analytics
+- Fabric Pipeline orchestration
+- Git/GitHub feature-branch and pull-request workflow
 
-The final Gold model contains:
+---
+
+## Current Scope and Limitations
+
+The project is intentionally portfolio-scale.
+
+Current implementation uses:
 
 ```text
-fact_sales
-
-dim_date
-dim_customer
-dim_product
-dim_region
-dim_channel
-dim_payment
+20,000 source orders
+Full-refresh transformations
+ROW_NUMBER-based surrogate keys
+Single development environment
 ```
 
-All dimension relationships use a one-to-many pattern toward the fact table
-with single-direction filtering.
+It does not claim a production SLA.
 
 ---
 
-### Executive Overview
+## Future Improvements
 
-The Executive Overview provides high-level operational and revenue KPIs.
+Potential production enhancements include:
 
-![Executive Overview](docs/screenshots/03_executive_overview.png)
-
-Key measures include:
-
-- Completed Revenue
-- Total Orders
-- Completed Orders
-- Average Order Value
-- Return Rate
-- Cancellation Rate
-
----
-
-### Sales Analysis
-
-The Sales Analysis page supports interactive analysis across:
-
-- month
-- category
-- region
-- sales channel
-- payment method
-
-![Sales Analysis](docs/screenshots/04_sales_analysis.png)
+- incremental ingestion
+- watermark-based processing
+- MERGE-based Silver and Gold loads
+- stable persistent surrogate keys
+- Slowly Changing Dimensions
+- rejected-record quarantine
+- automated data-quality alerts
+- dev/test/prod environments
+- CI/CD deployment
+- pipeline observability
+- secrets management
 
 ---
 
-### Product Analysis
+## Outcome
 
-The Product Analysis page focuses on product and category performance.
+The final platform implements the complete analytical flow:
 
-![Product Analysis](docs/screenshots/05_product_analysis.png)
+```text
+Operational Source
+        ↓
+Cloud Ingestion
+        ↓
+Lakehouse
+        ↓
+Data Quality
+        ↓
+Dimensional Modeling
+        ↓
+Semantic Layer
+        ↓
+Business Intelligence
+        ↓
+Pipeline Orchestration
+```
 
-Analysis includes:
-
-- top products by completed revenue
-- revenue by category
-- completed quantity by product
-- average order value by product
-- product performance matrix
-
----
-
-## Technical Documentation
-
-Detailed engineering documentation is available in:
-
-- [Architecture](docs/architecture.md)
-- [Data Quality](docs/data-quality.md)
-- [Dimensional Model](docs/dimensional-model.md)
-- [Validation Queries](sql/validation_queries.sql)
-- [Bronze to Silver Transformation](notebooks/nb_bronze_to_silver.sql)
-- [Silver to Gold Transformation](notebooks/nb_silver_to_gold.sql)
+The final end-to-end pipeline successfully processes all 20,000 source orders
+through Bronze, Silver, Gold, Direct Lake, and Power BI.
